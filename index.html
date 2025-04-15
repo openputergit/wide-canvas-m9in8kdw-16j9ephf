@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Generator</title>
+    <script src="https://unpkg.com/tailwindcss-jit-cdn"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 font-[Inter]">
+    <div class="container mx-auto px-4 py-8">
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h1 class="text-2xl font-bold mb-6">Invoice Generator</h1>
+            
+            <!-- Invoice Form -->
+            <form id="invoiceForm" class="space-y-6">
+                <!-- Company Details -->
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="font-semibold mb-3">From</h3>
+                        <input type="text" id="companyName" placeholder="Your Company Name" class="w-full p-2 border rounded">
+                        <textarea id="companyAddress" placeholder="Your Address" class="w-full p-2 border rounded mt-2"></textarea>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold mb-3">Bill To</h3>
+                        <input type="text" id="clientName" placeholder="Client Name" class="w-full p-2 border rounded">
+                        <textarea id="clientAddress" placeholder="Client Address" class="w-full p-2 border rounded mt-2"></textarea>
+                    </div>
+                </div>
+
+                <!-- Invoice Details -->
+                <div class="grid md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium">Invoice Number</label>
+                        <input type="text" id="invoiceNumber" class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Date</label>
+                        <input type="date" id="invoiceDate" class="w-full p-2 border rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Due Date</label>
+                        <input type="date" id="dueDate" class="w-full p-2 border rounded">
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-full" id="itemsTable">
+                        <thead>
+                            <tr class="bg-gray-50">
+                                <th class="px-4 py-2 text-left">Item</th>
+                                <th class="px-4 py-2 text-left">Description</th>
+                                <th class="px-4 py-2 text-right">Quantity</th>
+                                <th class="px-4 py-2 text-right">Rate</th>
+                                <th class="px-4 py-2 text-right">Amount</th>
+                                <th class="px-4 py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsList"></tbody>
+                    </table>
+                </div>
+
+                <button type="button" id="addItem" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Add Item
+                </button>
+
+                <!-- Totals -->
+                <div class="flex justify-end space-y-2">
+                    <div class="w-64">
+                        <div class="flex justify-between py-2">
+                            <span>Subtotal:</span>
+                            <span id="subtotal">$0.00</span>
+                        </div>
+                        <div class="flex justify-between py-2">
+                            <span>Tax (10%):</span>
+                            <span id="tax">$0.00</span>
+                        </div>
+                        <div class="flex justify-between py-2 font-bold">
+                            <span>Total:</span>
+                            <span id="total">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-4">
+                    <button type="submit" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-green-600">
+                        Save Invoice
+                    </button>
+                    <button type="button" id="generatePDF" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">
+                        Generate PDF
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let items = [];
+            const itemsList = document.getElementById('itemsList');
+            const addItemBtn = document.getElementById('addItem');
+            const invoiceForm = document.getElementById('invoiceForm');
+
+            function updateTotals() {
+                let subtotal = items.reduce((sum, item) => sum + (item.quantity * item.rate), 0);
+                let tax = subtotal * 0.1;
+                let total = subtotal + tax;
+
+                document.getElementById('subtotal').textContent = `$${subtotal.toFixed(2)}`;
+                document.getElementById('tax').textContent = `$${tax.toFixed(2)}`;
+                document.getElementById('total').textContent = `$${total.toFixed(2)}`;
+            }
+
+            function createItemRow() {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="px-4 py-2"><input type="text" class="border rounded p-1 w-full" name="item"></td>
+                    <td class="px-4 py-2"><input type="text" class="border rounded p-1 w-full" name="description"></td>
+                    <td class="px-4 py-2"><input type="number" class="border rounded p-1 w-full text-right" name="quantity" value="1"></td>
+                    <td class="px-4 py-2"><input type="number" class="border rounded p-1 w-full text-right" name="rate" value="0"></td>
+                    <td class="px-4 py-2 text-right amount">$0.00</td>
+                    <td class="px-4 py-2">
+                        <button type="button" class="text-red-500 hover:text-red-700 delete-row">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                `;
+
+                // Add event listeners for calculations
+                const inputs = tr.querySelectorAll('input');
+                inputs.forEach(input => {
+                    input.addEventListener('input', function() {
+                        const row = this.closest('tr');
+                        const quantity = parseFloat(row.querySelector('[name="quantity"]').value) || 0;
+                        const rate = parseFloat(row.querySelector('[name="rate"]').value) || 0;
+                        const amount = quantity * rate;
+                        row.querySelector('.amount').textContent = `$${amount.toFixed(2)}`;
+                        
+                        // Update items array
+                        items = Array.from(itemsList.children).map(row => ({
+                            item: row.querySelector('[name="item"]').value,
+                            description: row.querySelector('[name="description"]').value,
+                            quantity: parseFloat(row.querySelector('[name="quantity"]').value) || 0,
+                            rate: parseFloat(row.querySelector('[name="rate"]').value) || 0
+                        }));
+                        
+                        updateTotals();
+                    });
+                });
+
+                // Delete row functionality
+                tr.querySelector('.delete-row').addEventListener('click', function() {
+                    tr.remove();
+                    items = Array.from(itemsList.children).map(row => ({
+                        item: row.querySelector('[name="item"]').value,
+                        description: row.querySelector('[name="description"]').value,
+                        quantity: parseFloat(row.querySelector('[name="quantity"]').value) || 0,
+                        rate: parseFloat(row.querySelector('[name="rate"]').value) || 0
+                    }));
+                    updateTotals();
+                });
+
+                return tr;
+            }
+
+            addItemBtn.addEventListener('click', function() {
+                itemsList.appendChild(createItemRow());
+            });
+
+            invoiceForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const invoiceData = {
+                    appSlug: 'invoice-app-' + Date.now(),
+                    action: 'create',
+                    collection: 'invoices',
+                    data: {
+                        companyName: document.getElementById('companyName').value,
+                        companyAddress: document.getElementById('companyAddress').value,
+                        clientName: document.getElementById('clientName').value,
+                        clientAddress: document.getElementById('clientAddress').value,
+                        invoiceNumber: document.getElementById('invoiceNumber').value,
+                        invoiceDate: document.getElementById('invoiceDate').value,
+                        dueDate: document.getElementById('dueDate').value,
+                        items: items,
+                        subtotal: document.getElementById('subtotal').textContent,
+                        tax: document.getElementById('tax').textContent,
+                        total: document.getElementById('total').textContent
+                    }
+                };
+
+                try {
+                    const response = await fetch('https://r0c8kgwocscg8gsokogwwsw4.zetaverse.one/mongodb', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer wn4UjmaCpde23nEtu7Gm7rOVzLA2'
+                        },
+                        body: JSON.stringify(invoiceData)
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('Invoice saved successfully!');
+                    } else {
+                        throw new Error('Failed to save invoice');
+                    }
+                } catch (error) {
+                    alert('Error saving invoice: ' + error.message);
+                }
+            });
+
+            // Add initial row
+            itemsList.appendChild(createItemRow());
+        });
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
